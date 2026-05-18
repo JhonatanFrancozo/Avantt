@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Storage + Lambda + SNS
+
+Parameters:
+  NameTag:
+    Type: String
+    Default: grupo-01
+
+Resources:
+
+  BronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${NameTag}-bronze-${AWS::AccountId}
+
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${NameTag}-silver-${AWS::AccountId}
+    
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${NameTag}-silver-${AWS::AccountId}
+
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${NameTag}-topic
+
+
+  ETLLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NameTag}-etl-function
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref NotificationTopic
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+
+          sns = boto3.client('sns')
+
+          def lambda_handler(event, context):
+              sns.publish(
+                  TopicArn=os.environ["TOPIC_ARN"],
+                  Subject="ETL executado",
+                  Message="Dados movidos Bronze -> Silver"
+              )
+              return {"status":"ok"}
+
+
+  EmailLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NameTag}-email-function
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 30
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              print(event)
+              return {"status":"email enviado"}
+
+
+  PermissionInvokeFromSNS:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EmailLambda
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref NotificationTopic
+
+
+  Subscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: lambda
+      Endpoint: !GetAtt EmailLambda.Arn
+    
+    GlueDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: grupo01_db
+
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: grupo01-crawler
+      Role: LabRole
+      DatabaseName: !Ref GlueDatabase
+
+      Targets:
+        S3Targets:
+          - Path: !Sub s3://${BronzeBucket}
+
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+
+  AthenaWorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: grupo01-workgroup
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub s3://${SilverBucket}/athena-results/
+
+
+
+# STORAGE / EVENT STACK
+
+# Recursos criados:
+
+# 1 Bucket S3 Bronze
+# armazenamento bruto de dados
+
+# 1 Bucket S3 Silver
+# armazenamento de dados processados
+
+# 1 SNS Topic (grupo-01-topic)
+# canal de notificações entre serviços
+
+# 1 Lambda ETL (grupo-01-etl-function)
+# processa dados Bronze → Silver
+# publica mensagem no SNS
+
+# 1 Lambda Email (grupo-01-email-function)
+# recebe eventos do SNS
+# executa rotina de notificação
+
+# 1 Lambda Permission
+# autoriza o SNS invocar a Lambda Email
+
+# 1 SNS Subscription
+# conecta o tópico SNS à Lambda Email
+
+# Recurso reutilizado:
+# IAM Role -> LabRole
+# role já existente no ambiente AWS Lab
+# usada para execução das funções Lambda

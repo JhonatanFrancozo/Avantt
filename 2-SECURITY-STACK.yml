@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Security Stack
+
+Parameters:
+  NameTag:
+    Type: String
+    Default: grupo-01
+
+Resources:
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group projeto
+      VpcId: !ImportValue grupo-01-vpc-id
+
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+
+      Tags:
+        - Key: Name
+          Value: !Sub ${NameTag}-sg
+
+Outputs:
+  SecurityGroupId:
+    Value: !Ref SecurityGroup
+    Export:
+      Name: grupo-01-sg-id
+
+
+# SECURITY STACK
+
+# Recursos criados:
+
+# 1 Security Group (grupo-01-sg)
+
+# Regras de entrada:
+
+# Porta 22 (SSH) → 0.0.0.0/0
+# Porta 80 (HTTP) → 0.0.0.0/0
+
+# Regras de saída:
+
+# Todo tráfego liberado

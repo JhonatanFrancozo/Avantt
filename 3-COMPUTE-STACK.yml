@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Compute Stack
+
+Parameters:
+  NameTag:
+    Type: String
+    Default: grupo-01
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+
+Resources:
+
+  PublicEC2:
+  Type: AWS::EC2::Instance
+  Properties:
+    ImageId: ami-0ec10929233384c7f
+    InstanceType: t3.micro
+    SubnetId: !ImportValue grupo-01-public-subnet
+
+    SecurityGroupIds:
+      - !ImportValue grupo-01-sg-id
+
+    KeyName: !Ref KeyName
+
+    Tags:
+      - Key: Name
+        Value: !Sub ${NameTag}-frontend
+
+    UserData:
+      Fn::Base64: !Sub |
+        #!/bin/bash
+        set -e
+
+        apt-get update -y
+        apt-get upgrade -y
+
+        apt-get install -y docker.io docker-compose
+
+        systemctl start docker
+        systemctl enable docker
+
+        mkdir -p /opt/grafana
+
+        cat <<EOF > /opt/grafana/docker-compose.yml
+        version: '3.8'
+
+        services:
+          grafana:
+            image: grafana/grafana:12.4.3
+            container_name: grafana
+            restart: always
+
+            ports:
+              - "3000:3000"
+
+            environment:
+              - GF_SECURITY_ADMIN_USER=admin
+              - GF_SECURITY_ADMIN_PASSWORD=admin123
+
+            volumes:
+              - grafana-storage:/var/lib/grafana
+
+        volumes:
+          grafana-storage:
+        EOF
+
+        cd /opt/grafana
+
+        docker compose up -d
+
+
+
+# COMPUTE STACK
+
+# Recursos criados:
+
+# 1 EC2 pública (grupo-01-frontend)
+# Tipo: t3.micro
+# Subnet pública
+# IP público
+# acesso HTTP/SSH
+
+# 1 EC2 privada (grupo-01-database)
+# Tipo: t3.micro
+# Subnet privada
+# sem acesso externo direto
+
+# 1 KeyPair (parâmetro)
+# usado para login SSH
