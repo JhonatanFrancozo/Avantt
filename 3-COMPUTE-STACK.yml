@@ -11,80 +11,193 @@ Parameters:
 
 Resources:
 
-  PublicEC2:
-  Type: AWS::EC2::Instance
-  Properties:
-    ImageId: ami-0ec10929233384c7f
-    InstanceType: t3.micro
-    SubnetId: !ImportValue grupo-01-public-subnet
+  InstanciaPublica:
+    Type: AWS::EC2::Instance
+    DependsOn: InstanciaPrivada
 
-    SecurityGroupIds:
-      - !ImportValue grupo-01-sg-id
+    Properties:
+      ImageId: ami-0ec10929233384c7f
+      InstanceType: t3.micro
 
-    KeyName: !Ref KeyName
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !ImportValue grupo-01-public-subnet
+          GroupSet:
+            - !ImportValue grupo-01-sg-id
 
-    Tags:
-      - Key: Name
-        Value: !Sub ${NameTag}-frontend
+      KeyName: !Ref KeyName
 
-    UserData:
-      Fn::Base64: !Sub |
-        #!/bin/bash
-        set -e
+      Tags:
+        - Key: Name
+          Value: instancia-publica
 
-        apt-get update -y
-        apt-get upgrade -y
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
 
-        apt-get install -y docker.io docker-compose
+          exec > /var/log/user-data.log 2>&1
 
-        systemctl start docker
-        systemctl enable docker
+          apt-get update -y
 
-        mkdir -p /opt/grafana
+          apt-get install -y docker.io
+          apt-get install -y docker-compose-v2
 
-        cat <<EOF > /opt/grafana/docker-compose.yml
-        version: '3.8'
+          systemctl enable docker
+          systemctl start docker
 
-        services:
-          grafana:
-            image: grafana/grafana:12.4.3
-            container_name: grafana
-            restart: always
+          usermod -aG docker ubuntu
 
-            ports:
-              - "3000:3000"
+          mkdir -p /opt/projeto
 
-            environment:
-              - GF_SECURITY_ADMIN_USER=admin
-              - GF_SECURITY_ADMIN_PASSWORD=admin123
+          cat <<EOF > /opt/projeto/docker-compose.yml
+          version: '3.8'
 
-            volumes:
-              - grafana-storage:/var/lib/grafana
+          services:
 
-        volumes:
-          grafana-storage:
-        EOF
+            grafana:
+              image: grafana/grafana:12.4.3
+              container_name: grafana
+              restart: always
 
-        cd /opt/grafana
+              ports:
+                - "3000:3000"
 
-        docker compose up -d
+              environment:
+                - GF_SECURITY_ADMIN_USER=admin
+                - GF_SECURITY_ADMIN_PASSWORD=admin123
 
+              volumes:
+                - grafana-storage:/var/lib/grafana
 
+            n8n:
+              image: n8nio/n8n
+              container_name: n8n
+              restart: always
 
-# COMPUTE STACK
+              ports:
+                - "5678:5678"
 
-# Recursos criados:
+              environment:
+                - DB_TYPE=mysqldb
+                - DB_MYSQLDB_HOST=${InstanciaPrivada.PrivateIp}
+                - DB_MYSQLDB_PORT=3306
+                - DB_MYSQLDB_DATABASE=n8n
+                - DB_MYSQLDB_USER=root
+                - DB_MYSQLDB_PASSWORD=root123
+                - N8N_HOST=0.0.0.0
+                - N8N_PORT=5678
+                - N8N_PROTOCOL=http
+                - N8N_SECURE_COOKIE=false
 
-# 1 EC2 pública (grupo-01-frontend)
-# Tipo: t3.micro
-# Subnet pública
-# IP público
-# acesso HTTP/SSH
+              volumes:
+                - n8n_data:/home/node/.n8n
 
-# 1 EC2 privada (grupo-01-database)
-# Tipo: t3.micro
-# Subnet privada
-# sem acesso externo direto
+          volumes:
+            grafana-storage:
+            n8n_data:
+          EOF
 
-# 1 KeyPair (parâmetro)
-# usado para login SSH
+          sleep 60
+
+          cd /opt/projeto
+
+          docker compose up -d
+
+  PrivateDatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+
+    Properties:
+      GroupDescription: Security Group MySQL privado
+
+      VpcId: !ImportValue grupo-01-vpc-id
+
+      SecurityGroupIngress:
+
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.0.0.0/24
+
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/24
+
+      Tags:
+        - Key: Name
+          Value: mysql-private-sg
+
+  InstanciaPrivada:
+    Type: AWS::EC2::Instance
+
+    Properties:
+      ImageId: ami-0ec10929233384c7f
+      InstanceType: t3.micro
+
+      SubnetId: !ImportValue grupo-01-private-subnet
+
+      SecurityGroupIds:
+        - !Ref PrivateDatabaseSecurityGroup
+
+      KeyName: !Ref KeyName
+
+      Tags:
+        - Key: Name
+          Value: instancia-privada
+
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          exec > /var/log/user-data.log 2>&1
+
+          apt-get update -y
+
+          apt-get install -y docker.io
+          apt-get install -y docker-compose-v2
+
+          systemctl enable docker
+          systemctl start docker
+
+          usermod -aG docker ubuntu
+
+          mkdir -p /opt/mysql
+
+          cat <<EOF > /opt/mysql/docker-compose.yml
+          version: '3.8'
+
+          services:
+
+            mysql:
+              image: mysql:8
+              container_name: mysql
+              restart: always
+
+              ports:
+                - "3306:3306"
+
+              environment:
+                MYSQL_ROOT_PASSWORD: root123
+                MYSQL_DATABASE: n8n
+
+              volumes:
+                - mysql_data:/var/lib/mysql
+
+          volumes:
+            mysql_data:
+          EOF
+
+          cd /opt/mysql
+
+          docker compose up -d
+
+Outputs:
+
+  PrivateMySQLPrivateIP:
+    Description: IP privado da EC2 MySQL
+    Value: !GetAtt InstanciaPrivada.PrivateIp
+
+  PrivateMySQLInstanceId:
+    Description: Instance ID da EC2 privada
+    Value: !Ref InstanciaPrivada

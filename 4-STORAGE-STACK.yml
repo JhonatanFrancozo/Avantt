@@ -17,29 +17,82 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub ${NameTag}-silver-${AWS::AccountId}
-    
-  SilverBucket:
+
+  GoldBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${NameTag}-silver-${AWS::AccountId}
+      BucketName: !Sub ${NameTag}-gold-${AWS::AccountId}
 
   NotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub ${NameTag}-topic
 
-
-  ETLLambda:
+  BronzeLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub ${NameTag}-etl-function
+      FunctionName: !Sub ${NameTag}-bronze-function
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Timeout: 60
+
+      Environment:
+        Variables:
+          SILVER_BUCKET: !Ref SilverBucket
+
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+
+              print("Processando camada Bronze")
+
+              return {
+                  "statusCode": 200,
+                  "body": "Dados recebidos no Bronze"
+              }
+
+  SilverLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NameTag}-silver-function
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+
+      Environment:
+        Variables:
+          GOLD_BUCKET: !Ref GoldBucket
+
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+
+              print("Transformando dados Silver")
+
+              return {
+                  "statusCode": 200,
+                  "body": "Dados tratados na Silver"
+              }
+
+  GoldLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${NameTag}-gold-function
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      Timeout: 60
+
       Environment:
         Variables:
           TOPIC_ARN: !Ref NotificationTopic
+
       Code:
         ZipFile: |
           import os
@@ -48,13 +101,17 @@ Resources:
           sns = boto3.client('sns')
 
           def lambda_handler(event, context):
+
               sns.publish(
                   TopicArn=os.environ["TOPIC_ARN"],
-                  Subject="ETL executado",
-                  Message="Dados movidos Bronze -> Silver"
+                  Subject="Pipeline Gold Executado",
+                  Message="Dados processados na camada Gold"
               )
-              return {"status":"ok"}
 
+              return {
+                  "statusCode": 200,
+                  "body": "Pipeline Gold concluído"
+              }
 
   EmailLambda:
     Type: AWS::Lambda::Function
@@ -64,12 +121,17 @@ Resources:
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Timeout: 30
+
       Code:
         ZipFile: |
           def lambda_handler(event, context):
-              print(event)
-              return {"status":"email enviado"}
 
+              print(event)
+
+              return {
+                  "statusCode": 200,
+                  "body": "Email enviado"
+              }
 
   PermissionInvokeFromSNS:
     Type: AWS::Lambda::Permission
@@ -79,18 +141,18 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref NotificationTopic
 
-
   Subscription:
     Type: AWS::SNS::Subscription
     Properties:
       TopicArn: !Ref NotificationTopic
       Protocol: lambda
       Endpoint: !GetAtt EmailLambda.Arn
-    
-    GlueDatabase:
+
+  GlueDatabase:
     Type: AWS::Glue::Database
     Properties:
       CatalogId: !Ref AWS::AccountId
+
       DatabaseInput:
         Name: grupo01_db
 
@@ -99,6 +161,7 @@ Resources:
     Properties:
       Name: grupo01-crawler
       Role: LabRole
+
       DatabaseName: !Ref GlueDatabase
 
       Targets:
@@ -113,40 +176,27 @@ Resources:
     Type: AWS::Athena::WorkGroup
     Properties:
       Name: grupo01-workgroup
+
       WorkGroupConfiguration:
         ResultConfiguration:
-          OutputLocation: !Sub s3://${SilverBucket}/athena-results/
+          OutputLocation: !Sub s3://${GoldBucket}/athena-results/
 
+Outputs:
 
+  BronzeBucketName:
+    Value: !Ref BronzeBucket
 
-# STORAGE / EVENT STACK
+  SilverBucketName:
+    Value: !Ref SilverBucket
 
-# Recursos criados:
+  GoldBucketName:
+    Value: !Ref GoldBucket
 
-# 1 Bucket S3 Bronze
-# armazenamento bruto de dados
+  BronzeLambdaName:
+    Value: !Ref BronzeLambda
 
-# 1 Bucket S3 Silver
-# armazenamento de dados processados
+  SilverLambdaName:
+    Value: !Ref SilverLambda
 
-# 1 SNS Topic (grupo-01-topic)
-# canal de notificações entre serviços
-
-# 1 Lambda ETL (grupo-01-etl-function)
-# processa dados Bronze → Silver
-# publica mensagem no SNS
-
-# 1 Lambda Email (grupo-01-email-function)
-# recebe eventos do SNS
-# executa rotina de notificação
-
-# 1 Lambda Permission
-# autoriza o SNS invocar a Lambda Email
-
-# 1 SNS Subscription
-# conecta o tópico SNS à Lambda Email
-
-# Recurso reutilizado:
-# IAM Role -> LabRole
-# role já existente no ambiente AWS Lab
-# usada para execução das funções Lambda
+  GoldLambdaName:
+    Value: !Ref GoldLambda
