@@ -8,6 +8,11 @@ Parameters:
 
 Resources:
 
+  SourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${NameTag}-source-${AWS::AccountId}
+
   BronzeBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -182,6 +187,9 @@ Resources:
           OutputLocation: !Sub s3://${GoldBucket}/athena-results/
 
 Outputs:
+
+  SourceBucketName:
+    Value: !Ref SourceBucket
 
   BronzeBucketName:
     Value: !Ref BronzeBucket

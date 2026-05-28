@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Compute Stack
+Description: Compute Stack - Publica (n8n/Grafana) e Privada (MySQL)
 
 Parameters:
   NameTag:
@@ -11,13 +11,15 @@ Parameters:
 
 Resources:
 
+  # -------------------------------------------------------------------------
+  # INSTÂNCIA PÚBLICA (n8n + Grafana em t3.small)
+  # -------------------------------------------------------------------------
   InstanciaPublica:
     Type: AWS::EC2::Instance
-    DependsOn: InstanciaPrivada
-
     Properties:
       ImageId: ami-0ec10929233384c7f
-      InstanceType: t3.micro
+      InstanceType: t3.small
+      IamInstanceProfile: LabInstanceProfile
 
       NetworkInterfaces:
         - AssociatePublicIpAddress: true
@@ -35,38 +37,30 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-
-          apt-get install -y docker.io
-          apt-get install -y docker-compose-v2
+          apt-get install -y docker.io docker-compose-v2
 
           systemctl enable docker
           systemctl start docker
-
           usermod -aG docker ubuntu
 
           mkdir -p /opt/projeto
 
-          cat <<EOF > /opt/projeto/docker-compose.yml
+          cat <<'EOF' > /opt/projeto/docker-compose.yml
           version: '3.8'
 
           services:
-
             grafana:
               image: grafana/grafana:12.4.3
               container_name: grafana
               restart: always
-
               ports:
                 - "3000:3000"
-
               environment:
                 - GF_SECURITY_ADMIN_USER=admin
                 - GF_SECURITY_ADMIN_PASSWORD=admin123
-
               volumes:
                 - grafana-storage:/var/lib/grafana
 
@@ -74,22 +68,13 @@ Resources:
               image: n8nio/n8n
               container_name: n8n
               restart: always
-
               ports:
                 - "5678:5678"
-
               environment:
-                - DB_TYPE=mysqldb
-                - DB_MYSQLDB_HOST=${InstanciaPrivada.PrivateIp}
-                - DB_MYSQLDB_PORT=3306
-                - DB_MYSQLDB_DATABASE=n8n
-                - DB_MYSQLDB_USER=root
-                - DB_MYSQLDB_PASSWORD=root123
                 - N8N_HOST=0.0.0.0
                 - N8N_PORT=5678
                 - N8N_PROTOCOL=http
                 - N8N_SECURE_COOKIE=false
-
               volumes:
                 - n8n_data:/home/node/.n8n
 
@@ -98,49 +83,130 @@ Resources:
             n8n_data:
           EOF
 
-          sleep 60
+          cat <<'EOF' > /opt/projeto/workflow.json
+          {
+            "name": "Automacao-S3-Source-to-Bronze",
+            "nodes": [
+              {
+                "parameters": {
+                  "rule": {
+                    "interval": [
+                      {
+                        "field": "hours",
+                        "interval": 1
+                      }
+                    ]
+                  }
+                },
+                "id": "1e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+                "name": "Schedule Trigger",
+                "type": "n8n-nodes-base.scheduleTrigger",
+                "typeVersion": 1.1,
+                "position": [250, 300]
+              },
+              {
+                "parameters": {
+                  "operation": "download",
+                  "bucketName": "grupo-01-source-865815610349",
+                  "fileKey": "dados.csv",
+                  "outputBinaryProperty": "data"
+                },
+                "id": "2e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+                "name": "AWS S3 - Download Source",
+                "type": "n8n-nodes-base.awsS3",
+                "typeVersion": 2,
+                "position": [480, 300]
+              },
+              {
+                "parameters": {
+                  "operation": "upload",
+                  "bucketName": "grupo-01-bronze-865815610349",
+                  "fileKey": "dados.csv",
+                  "fileName": "dados.csv",
+                  "binaryData": true,
+                  "binaryProperty": "data"
+                },
+                "id": "3e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+                "name": "AWS S3 - Upload Bronze",
+                "type": "n8n-nodes-base.awsS3",
+                "typeVersion": 2,
+                "position": [710, 300]
+              }
+            ],
+            "connections": {
+              "Schedule Trigger": {
+                "main": [
+                  [
+                    {
+                      "node": "AWS S3 - Download Source",
+                      "type": "main",
+                      "index": 0
+                    }
+                  ]
+                ]
+              },
+              "AWS S3 - Download Source": {
+                "main": [
+                  [
+                    {
+                      "node": "AWS S3 - Upload Bronze",
+                      "type": "main",
+                      "index": 0
+                    }
+                  ]
+                ]
+              }
+            },
+            "active": false
+          }
+          EOF
 
           cd /opt/projeto
-
           docker compose up -d
 
+          for i in {1..30}; do
+            if curl -s http://localhost:5678/healthz | grep -q '"status":"ok"'; then
+              break
+            fi
+            sleep 5
+          done
+
+          docker exec n8n n8n import:workflow --input=/opt/projeto/workflow.json
+
+  # -------------------------------------------------------------------------
+  # SECURITY GROUP DO BANCO DE DADOS PRIVADO
+  # -------------------------------------------------------------------------
   PrivateDatabaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
-
     Properties:
-      GroupDescription: Security Group MySQL privado
-
+      GroupDescription: Security Group MySQL privado (Acesso apenas da VPC)
       VpcId: !ImportValue grupo-01-vpc-id
-
       SecurityGroupIngress:
-
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          CidrIp: 10.0.0.0/24
-
+          CidrIp: 10.0.0.0/24 # Permite acesso da sub-rede pública
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 10.0.0.0/24
-
       Tags:
         - Key: Name
           Value: mysql-private-sg
 
+  # -------------------------------------------------------------------------
+  # INSTÂNCIA PRIVADA (MySQL)
+  # -------------------------------------------------------------------------
   InstanciaPrivada:
     Type: AWS::EC2::Instance
-
     Properties:
       ImageId: ami-0ec10929233384c7f
       InstanceType: t3.micro
-
       SubnetId: !ImportValue grupo-01-private-subnet
-
       SecurityGroupIds:
         - !Ref PrivateDatabaseSecurityGroup
-
       KeyName: !Ref KeyName
+      IamInstanceProfile: LabInstanceProfile # Adicionado para permitir acesso via SSM
 
       Tags:
         - Key: Name
@@ -149,55 +215,40 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
-
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-
-          apt-get install -y docker.io
-          apt-get install -y docker-compose-v2
+          apt-get install -y docker.io docker-compose-v2
 
           systemctl enable docker
           systemctl start docker
-
           usermod -aG docker ubuntu
 
           mkdir -p /opt/mysql
 
-          cat <<EOF > /opt/mysql/docker-compose.yml
+          # Blindado com aspas simples para evitar falha no CloudFormation
+          cat <<'EOF' > /opt/mysql/docker-compose.yml
           version: '3.8'
-
           services:
-
             mysql:
               image: mysql:8
               container_name: mysql
               restart: always
-
               ports:
                 - "3306:3306"
-
               environment:
                 MYSQL_ROOT_PASSWORD: root123
                 MYSQL_DATABASE: n8n
-
               volumes:
                 - mysql_data:/var/lib/mysql
-
           volumes:
             mysql_data:
           EOF
 
           cd /opt/mysql
-
           docker compose up -d
 
 Outputs:
-
-  PrivateMySQLPrivateIP:
-    Description: IP privado da EC2 MySQL
-    Value: !GetAtt InstanciaPrivada.PrivateIp
-
-  PrivateMySQLInstanceId:
-    Description: Instance ID da EC2 privada
-    Value: !Ref InstanciaPrivada
+  AvisoStack:
+    Description: Status da Stack
+    Value: Infraestrutura hibrida (Publica n8n + Privada MySQL) implantada com sucesso.
