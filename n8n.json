@@ -1,0 +1,74 @@
+{
+  "name": "Automacao-S3-Source-to-Bronze",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "interval": 1
+            }
+          ]
+        }
+      },
+      "id": "1e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "bucketName": "grupo-01-source-865815610349",
+        "fileKey": "dados.csv",
+        "outputBinaryProperty": "data"
+      },
+      "id": "2e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+      "name": "AWS S3 - Download Source",
+      "type": "n8n-nodes-base.awsS3",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "grupo-01-bronze-865815610349",
+        "fileKey": "dados.csv",
+        "binaryData": true,
+        "binaryProperty": "data"
+      },
+      "id": "3e2f3g4h-5i6j-7k8l-9m10-n11o12p13q14",
+      "name": "AWS S3 - Upload Bronze",
+      "type": "n8n-nodes-base.awsS3",
+      "typeVersion": 2,
+      "position": [710, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "AWS S3 - Download Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AWS S3 - Download Source": {
+      "main": [
+        [
+          {
+            "node": "AWS S3 - Upload Bronze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false
+}
