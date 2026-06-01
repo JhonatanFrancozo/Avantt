@@ -16,6 +16,7 @@ Resources:
   # -------------------------------------------------------------------------
   InstanciaPublica:
     Type: AWS::EC2::Instance
+    DependsOn: InstanciaPrivada
     Properties:
       ImageId: ami-0ec10929233384c7f
       InstanceType: t3.small
@@ -40,7 +41,8 @@ Resources:
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-          apt-get install -y docker.io docker-compose-v2
+          apt-get install -y docker.io
+          apt-get install -y docker-compose-v2
 
           systemctl enable docker
           systemctl start docker
@@ -218,7 +220,8 @@ Resources:
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-          apt-get install -y docker.io docker-compose-v2
+          aapt-get install -y docker.io
+          apt-get install -y docker-compose-v2
 
           systemctl enable docker
           systemctl start docker
@@ -249,6 +252,14 @@ Resources:
           docker compose up -d
 
 Outputs:
+  PrivateMySQLPrivateIP:
+    Description: IP privado da EC2 MySQL
+    Value: !GetAtt InstanciaPrivada.PrivateIp
+
+  PrivateMySQLInstanceId:
+    Description: Instance ID da EC2 privada
+    Value: !Ref InstanciaPrivada
+    
   AvisoStack:
     Description: Status da Stack
     Value: Infraestrutura hibrida (Publica n8n + Privada MySQL) implantada com sucesso.
