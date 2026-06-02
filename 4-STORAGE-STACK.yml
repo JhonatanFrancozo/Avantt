@@ -186,7 +186,7 @@ Resources:
         ResultConfiguration:
           OutputLocation: !Sub s3://${GoldBucket}/athena-results/
 
- BronzeLambdaErrorAlarm:
+  BronzeLambdaErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub ${NameTag}-bronze-errors
