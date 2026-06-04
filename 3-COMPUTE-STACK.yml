@@ -220,7 +220,7 @@ Resources:
           exec > /var/log/user-data.log 2>&1
 
           apt-get update -y
-          aapt-get install -y docker.io
+          apt-get install -y docker.io
           apt-get install -y docker-compose-v2
 
           systemctl enable docker

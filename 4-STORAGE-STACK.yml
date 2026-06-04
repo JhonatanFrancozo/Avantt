@@ -11,22 +11,22 @@ Resources:
   SourceBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${NameTag}-source-${AWS::AccountId}
+      BucketName: !Sub grupo01-source-${AWS::AccountId}
 
   BronzeBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${NameTag}-bronze-${AWS::AccountId}
+      BucketName: !Sub grupo01-bronze-${AWS::AccountId}
 
   SilverBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${NameTag}-silver-${AWS::AccountId}
+      BucketName: !Sub grupo01-silver-${AWS::AccountId}
 
   GoldBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${NameTag}-gold-${AWS::AccountId}
+      BucketName: !Sub grupo01-gold-${AWS::AccountId}
 
   NotificationTopic:
     Type: AWS::SNS::Topic
@@ -159,19 +159,19 @@ Resources:
       CatalogId: !Ref AWS::AccountId
 
       DatabaseInput:
-        Name: grupo01_db
+        Name: tarefas
 
   GlueCrawler:
     Type: AWS::Glue::Crawler
     Properties:
       Name: grupo01-crawler
-      Role: LabRole
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
 
       DatabaseName: !Ref GlueDatabase
 
       Targets:
         S3Targets:
-          - Path: !Sub s3://${BronzeBucket}
+          - Path: !Sub s3://${GoldBucket}/tasks_gold/
 
       SchemaChangePolicy:
         UpdateBehavior: UPDATE_IN_DATABASE
@@ -208,3 +208,9 @@ Outputs:
 
   GoldLambdaName:
     Value: !Ref GoldLambda
+  
+  GlueDatabaseName:
+    Value: tarefas
+
+  AthenaWorkGroupName:
+    Value: grupo01-workgroup
