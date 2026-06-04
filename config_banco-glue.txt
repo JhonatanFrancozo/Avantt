@@ -1,0 +1,56 @@
+CREATE EXTERNAL TABLE tarefas.tasks_gold (
+  issue_key STRING,
+  project_key STRING,
+  person_key STRING,
+  time_log_delta_minutes STRING,
+  time_log_start_date STRING,
+  data STRING,
+  atrasada STRING,
+  dias_restantes STRING
+)
+PARTITIONED BY (date STRING)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+  'separatorChar' = ',',
+  'quoteChar' = '"'
+)
+LOCATION 's3://grupo01-gold/tasks_gold/'
+TBLPROPERTIES (
+  "skip.header.line.count"="1",
+  "use.null.for.invalid.data"="true"
+);
+
+MSCK REPAIR TABLE tarefas.tasks_gold;
+
+SELECT * 
+FROM tarefas.tasks_gold 
+LIMIT 10;
+
+CREATE OR REPLACE VIEW tarefas.tasks_gold_clean AS
+SELECT
+  issue_key,
+  project_key,
+  person_key,
+
+  TRY_CAST(time_log_delta_minutes AS DOUBLE) AS time_log_delta_minutes,
+
+  TRY_CAST(data AS TIMESTAMP) AS data,
+
+  TRY_CAST(atrasada AS INTEGER) AS atrasada,
+
+  TRY_CAST(dias_restantes AS INTEGER) AS dias_restantes,
+
+  date
+
+FROM tarefas.tasks_gold;
+
+SELECT *
+FROM tarefas.tasks_gold_clean
+LIMIT 10;
+
+SELECT
+  date,
+  AVG(time_log_delta_minutes) AS tempo_medio
+FROM tarefas.tasks_gold_clean
+GROUP BY date
+ORDER BY date;
