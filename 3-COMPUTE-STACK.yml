@@ -63,6 +63,7 @@ Resources:
               environment:
                 - GF_SECURITY_ADMIN_USER=admin
                 - GF_SECURITY_ADMIN_PASSWORD=admin123
+                - GF_INSTALL_PLUGINS=grafana-athena-datasource
               volumes:
                 - grafana-storage:/var/lib/grafana
 
@@ -165,6 +166,33 @@ Resources:
 
           cd /opt/projeto
           docker compose up -d
+
+          # Espera Grafana iniciar
+          for i in {1..30}; do
+          if curl -s http://localhost:3000/api/health | grep -q ok; then
+            break
+          fi
+          sleep 60
+          done
+
+          # Cria datasource Athena automaticamente
+          curl -X POST \
+          http://admin:admin123@localhost:3000/api/datasources \
+          -u admin:admin123 \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name":"Athena",
+            "type":"grafana-athena-datasource",
+            "access":"proxy",
+            "isDefault":true,
+            "jsonData":{
+              "authType":"default",
+              "defaultRegion":"us-east-1",
+              "catalog":"AwsDataCatalog",
+              "database":"tarefas",
+              "workgroup":"grupo01-workgroup"
+            }
+          }'
 
           for i in {1..30}; do
             if curl -s http://localhost:5678/healthz | grep -q '"status":"ok"'; then
