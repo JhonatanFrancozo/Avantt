@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Storage + Lambda + SNS
+Description: Storage + Lambda + SNS com tratamento real para a Wide Table
 
 Parameters:
   NameTag:
@@ -8,6 +8,9 @@ Parameters:
 
 Resources:
 
+  # =========================================================================
+  # BUCKETS S3
+  # =========================================================================
   SourceBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -17,22 +20,38 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub grupo01-bronze-${AWS::AccountId}
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt SilverLambda.Arn
 
   SilverBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub grupo01-silver-${AWS::AccountId}
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt GoldLambda.Arn
 
   GoldBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub grupo01-gold-${AWS::AccountId}
 
+  # =========================================================================
+  # TÓPICO SNS
+  # =========================================================================
   NotificationTopic:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: !Sub ${NameTag}-topic
 
+  # =========================================================================
+  # LAMBDA FUNCTIONS (CÓDIGOS E CAPACIDADES ATUALIZADAS)
+  # =========================================================================
+  
+  # --- BRONZE LAMBDA ---
   BronzeLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -40,25 +59,40 @@ Resources:
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+      MemorySize: 128
       Timeout: 60
-
       Environment:
         Variables:
-          SILVER_BUCKET: !Ref SilverBucket
-
+          BRONZE_BUCKET: !Ref BronzeBucket
       Code:
         ZipFile: |
           import json
+          import boto3
+          import urllib.parse
+          import os
+
+          s3 = boto3.client('s3')
+          DESTINO_BRONZE = os.environ['BRONZE_BUCKET']
 
           def lambda_handler(event, context):
+              print("--- CAMADA BRONZE ACTIVADA ---")
+              try:
+                  source_bucket = event['Records'][0]['s3']['bucket']['name']
+                  file_key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+                  
+                  print(f"Copiando {file_key} de {source_bucket} para o bucket Bronze: {DESTINO_BRONZE}")
 
-              print("Processando camada Bronze")
+                  s3.copy_object(
+                      CopySource={'Bucket': source_bucket, 'Key': file_key},
+                      Bucket=DESTINO_BRONZE,
+                      Key=file_key
+                  )
+                  return {"statusCode": 200, "body": "Arquivo movido com sucesso para a camada Bronze"}
+              except Exception as e:
+                  print(f"Erro na BronzeLambda: {str(e)}")
+                  raise e
 
-              return {
-                  "statusCode": 200,
-                  "body": "Dados recebidos no Bronze"
-              }
-
+  # --- SILVER LAMBDA ---
   SilverLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -66,25 +100,59 @@ Resources:
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
-      Timeout: 60
-
+      MemorySize: 512
+      Timeout: 120
       Environment:
         Variables:
-          GOLD_BUCKET: !Ref GoldBucket
-
+          SILVER_BUCKET: !Ref SilverBucket
       Code:
         ZipFile: |
           import json
+          import boto3
+          import urllib.parse
+          import csv
+          import io
+          import os
+
+          s3 = boto3.client('s3')
+          SILVER_BUCKET = os.environ['SILVER_BUCKET']
 
           def lambda_handler(event, context):
-
               print("Transformando dados Silver")
+              try:
+                  source_bucket = event['Records'][0]['s3']['bucket']['name']
+                  file_key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
 
-              return {
-                  "statusCode": 200,
-                  "body": "Dados tratados na Silver"
-              }
+                  response = s3.get_object(Bucket=source_bucket, Key=file_key)
+                  content  = response['Body'].read().decode('utf-8')
+                  
+                  reader = csv.DictReader(io.StringIO(content), skipinitialspace=True)
+                  fieldnames = [str(h).strip() for h in reader.fieldnames] if reader.fieldnames else []
+                  
+                  rows_tratadas = []
+                  for row in reader:
+                      row_limpa = {str(k).strip(): str(v).strip() for k, v in row.items() if k is not None}
+                      if not any(row_limpa.values()):
+                          continue
+                      rows_tratadas.append(row_limpa)
 
+                  if rows_tratadas:
+                      output = io.StringIO()
+                      writer = csv.DictWriter(output, fieldnames=fieldnames)
+                      writer.writeheader()
+                      writer.writerows(rows_tratadas)
+
+                      s3.put_object(
+                          Bucket=SILVER_BUCKET,
+                          Key=str(file_key),
+                          Body=output.getvalue().encode('utf-8')
+                      )
+                  return {"statusCode": 200, "body": "Dados tratados na Silver"}
+              except Exception as e:
+                  print(f"Erro crítico na camada Silver: {str(e)}")
+                  raise e
+
+  # --- GOLD LAMBDA ---
   GoldLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -92,32 +160,104 @@ Resources:
       Runtime: python3.12
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
-      Timeout: 60
-
+      MemorySize: 512
+      Timeout: 120
       Environment:
         Variables:
+          GOLD_BUCKET: !Ref GoldBucket
           TOPIC_ARN: !Ref NotificationTopic
-
       Code:
         ZipFile: |
-          import os
+          import json
           import boto3
+          import urllib.parse
+          import csv
+          import io
+          import os
+          from datetime import datetime
 
+          s3  = boto3.client('s3')
           sns = boto3.client('sns')
+          GOLD_BUCKET = os.environ['GOLD_BUCKET']
 
           def lambda_handler(event, context):
+              print("Processando camada Gold - Agregando a Wide Table Real")
+              try:
+                  source_bucket = event['Records'][0]['s3']['bucket']['name']
+                  file_key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
 
-              sns.publish(
-                  TopicArn=os.environ["TOPIC_ARN"],
-                  Subject="Pipeline Gold Executado",
-                  Message="Dados processados na camada Gold"
-              )
+                  print(f"Buscando arquivo da Prata: {file_key} no bucket {source_bucket}")
+                  response = s3.get_object(Bucket=source_bucket, Key=file_key)
+                  content  = response['Body'].read().decode('utf-8-sig')
 
-              return {
-                  "statusCode": 200,
-                  "body": "Pipeline Gold concluído"
-              }
+                  reader = csv.DictReader(io.StringIO(content), skipinitialspace=True)
+                  rows = list(reader)
 
+                  if not rows:
+                      print("Aviso: O arquivo vindo da Silver está vazio.")
+                      return {"statusCode": 200, "body": "Nenhum registro para processar na Gold."}
+
+                  projetos = {}
+                  for row in rows:
+                      row_limpa = {str(k).strip(): str(v).strip() for k, v in row.items() if k is not None}
+                      projeto = row_limpa.get('project_name') or row_limpa.get('project_key')
+                      
+                      if not projeto or projeto == 'None' or projeto == '':
+                          projeto = 'desconhecido'
+
+                      try:
+                          minutos_valores = row_limpa.get('total_tempo_logado_minutos')
+                          minutos = float(minutos_valores) if minutos_valores and minutos_valores != 'None' else 0.0
+                      except ValueError:
+                          minutos = 0.0
+                      
+                      status_proj = str(row_limpa.get('status_projeto', '')).lower()
+                      atrasado = 1 if 'atrasado' in status_proj else 0
+
+                      if projeto not in projetos:
+                          projetos[projeto] = {
+                              'project': projeto,
+                              'total_tarefas': 0,
+                              'total_minutos': 0.0,
+                              'projetos_atrasados': 0,
+                              'data_processamento': datetime.utcnow().strftime('%Y-%m-%d')
+                          }
+                      
+                      projetos[projeto]['total_tarefas']     += 1
+                      projetos[projeto]['total_minutos']     += minutos
+                      projetos[projeto]['projetos_atrasados'] += atrasado
+
+                  gold_output = io.StringIO()
+                  campos = ['project', 'total_tarefas', 'total_minutos', 'projetos_atrasados', 'data_processamento']
+                            
+                  writer = csv.DictWriter(gold_output, fieldnames=campos)
+                  writer.writeheader()
+                  writer.writerows(projetos.values())
+
+                  gold_key = file_key.replace('.csv', '_gold.csv')
+                  
+                  print(f"Gravando arquivo final agregado na Gold: {gold_key}")
+                  s3.put_object(
+                      Bucket=GOLD_BUCKET,
+                      Key=gold_key,
+                      Body=gold_output.getvalue().encode('utf-8')
+                  )
+
+                  if "TOPIC_ARN" in os.environ:
+                      sns.publish(
+                          TopicArn=os.environ["TOPIC_ARN"],
+                          Subject="Pipeline Gold Executado com Sucesso",
+                          Message=f"A sua Wide Table real foi processada com sucesso na Gold!\n\n"
+                                  f"Arquivo gerado: {gold_key}\n"
+                                  f"Registros lidos da Silver: {len(rows)}\n"
+                                  f"Total de Projetos Calculados de forma única: {len(projetos)}"
+                      )
+                  return {"statusCode": 200, "body": "Pipeline Gold concluído com sucesso com mapeamento real"}
+              except Exception as e:
+                  print(f"Erro crítico na camada Gold: {str(e)}")
+                  raise e
+
+  # --- EMAIL CONSUMER LAMBDA ---
   EmailLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -126,18 +266,18 @@ Resources:
       Handler: index.lambda_handler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Timeout: 30
-
       Code:
         ZipFile: |
           def lambda_handler(event, context):
-
               print(event)
-
               return {
                   "statusCode": 200,
                   "body": "Email enviado"
               }
 
+  # =========================================================================
+  # PERMISSÕES E ACESSOS DE GATILHOS
+  # =========================================================================
   PermissionInvokeFromSNS:
     Type: AWS::Lambda::Permission
     Properties:
@@ -146,6 +286,22 @@ Resources:
       Principal: sns.amazonaws.com
       SourceArn: !Ref NotificationTopic
 
+  PermissionInvokeSilverFromBronzeS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt SilverLambda.Arn
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:aws:s3:::grupo01-bronze-${AWS::AccountId}
+
+  PermissionInvokeGoldFromSilverS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt GoldLambda.Arn
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:aws:s3:::grupo01-silver-${AWS::AccountId}
+
   Subscription:
     Type: AWS::SNS::Subscription
     Properties:
@@ -153,11 +309,13 @@ Resources:
       Protocol: lambda
       Endpoint: !GetAtt EmailLambda.Arn
 
+  # =========================================================================
+  # DATA ANALYTICS (GLUE & ATHENA)
+  # =========================================================================
   GlueDatabase:
     Type: AWS::Glue::Database
     Properties:
       CatalogId: !Ref AWS::AccountId
-
       DatabaseInput:
         Name: tarefas
 
@@ -166,13 +324,10 @@ Resources:
     Properties:
       Name: grupo01-crawler
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
-
       DatabaseName: !Ref GlueDatabase
-
       Targets:
         S3Targets:
           - Path: !Sub s3://${GoldBucket}/tasks_gold/
-
       SchemaChangePolicy:
         UpdateBehavior: UPDATE_IN_DATABASE
         DeleteBehavior: LOG
@@ -181,11 +336,13 @@ Resources:
     Type: AWS::Athena::WorkGroup
     Properties:
       Name: grupo01-workgroup
-
       WorkGroupConfiguration:
         ResultConfiguration:
           OutputLocation: !Sub s3://${GoldBucket}/athena-results/
 
+  # =========================================================================
+  # ALARMES CLOUDWATCH
+  # =========================================================================
   BronzeLambdaErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -240,31 +397,25 @@ Resources:
       AlarmActions:
         - !Ref NotificationTopic
 
+# =========================================================================
+# SAÍDAS DO MODELO (OUTPUTS)
+# =========================================================================
 Outputs:
-
   SourceBucketName:
     Value: !Ref SourceBucket
-
   BronzeBucketName:
     Value: !Ref BronzeBucket
-
   SilverBucketName:
     Value: !Ref SilverBucket
-
   GoldBucketName:
     Value: !Ref GoldBucket
-
   BronzeLambdaName:
     Value: !Ref BronzeLambda
-
   SilverLambdaName:
     Value: !Ref SilverLambda
-
   GoldLambdaName:
     Value: !Ref GoldLambda
-  
   GlueDatabaseName:
     Value: tarefas
-
   AthenaWorkGroupName:
     Value: grupo01-workgroup
