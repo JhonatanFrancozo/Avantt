@@ -53,6 +53,34 @@ Resources:
       TopicArn: !Ref NotificationTopic
       Protocol: email
       Endpoint: monica.leamari@sptech.school
+
+  EmailSubscriptionKevelly:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: email
+      Endpoint: kevelly.oliveira@sptech.school
+
+  EmailSubscriptionJhonatan:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: email
+      Endpoint: jhonatan.caldas@sptech.school
+
+  EmailSubscriptionBruno:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: email
+      Endpoint: bruno.milici@sptech.school
+  
+  EmailSubscriptionJulia:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: email
+      Endpoint: julia.oliveira@sptech.school
       
   # =========================================================================
   # LAMBDA FUNCTIONS (CÓDIGOS E CAPACIDADES ATUALIZADAS)
