@@ -327,7 +327,7 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt SilverLambda.Arn
       Principal: s3.amazonaws.com
-      SourceArn: !Sub arn:aws:aws:s3:::grupo01-bronze-${AWS::AccountId}
+      SourceArn: !Sub arn:aws:s3:::grupo01-bronze-${AWS::AccountId}
 
   PermissionInvokeGoldFromSilverS3:
     Type: AWS::Lambda::Permission
@@ -335,7 +335,7 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt GoldLambda.Arn
       Principal: s3.amazonaws.com
-      SourceArn: !Sub arn:aws:aws:s3:::grupo01-silver-${AWS::AccountId}
+      SourceArn: !Sub arn:aws:s3:::grupo01-silver-${AWS::AccountId}
 
   Subscription:
     Type: AWS::SNS::Subscription
