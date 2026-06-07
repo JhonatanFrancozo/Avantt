@@ -21,7 +21,7 @@
     {
       "parameters": {
         "operation": "download",
-        "bucketName": "grupo-01-source-865815610349",
+        "bucketName": "grupo01-source-865815610349",
         "fileKey": "dados.csv",
         "outputBinaryProperty": "data"
       },
@@ -34,7 +34,7 @@
     {
       "parameters": {
         "operation": "upload",
-        "bucketName": "grupo-01-bronze-865815610349",
+        "bucketName": "grupo01-bronze-865815610349",
         "fileKey": "dados.csv",
         "binaryData": true,
         "binaryProperty": "data"
