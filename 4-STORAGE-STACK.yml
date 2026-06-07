@@ -47,6 +47,13 @@ Resources:
     Properties:
       TopicName: !Sub ${NameTag}-topic
 
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref NotificationTopic
+      Protocol: email
+      Endpoint: monica.leamari@sptech.school
+      
   # =========================================================================
   # LAMBDA FUNCTIONS (CÓDIGOS E CAPACIDADES ATUALIZADAS)
   # =========================================================================
