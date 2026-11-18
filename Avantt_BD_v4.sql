@@ -1469,8 +1469,61 @@ INNER JOIN tarefa_usuario tu
 WHERE t.projeto_id = ?
   AND tu.usuario_id = ?;
   
+  SELECT
+    id,
+    titulo,
+    projeto_id,
+    sprint_id,
+    atribuido_para
+FROM tarefa
+ORDER BY id DESC;
+SELECT
+    ID,
+    TITULO,
+    ATRIBUIDO_PARA
+FROM TAREFA
+WHERE ATRIBUIDO_PARA = 16;
+
+SELECT
+    ATRIBUIDO_PARA,
+    COUNT(*) AS QUANTIDADE_TAREFAS
+FROM TAREFA
+WHERE ATRIBUIDO_PARA IS NOT NULL
+GROUP BY ATRIBUIDO_PARA
+ORDER BY ATRIBUIDO_PARA;
+
+SELECT
+    ID,
+    NOME,
+    EMAIL
+FROM USUARIO
+WHERE ID = 16;
+
+SELECT *
+FROM USUARIO
+WHERE ID = 16;
+
+
+SELECT
+    PU.PROJETO_ID,
+    PU.USUARIO_ID,
+    P.NOME,
+    P.ORGANIZACAO_ID
+FROM PROJETO_USUARIO PU
+INNER JOIN PROJETO P
+    ON P.ID = PU.PROJETO_ID
+WHERE PU.PROJETO_ID = 9
+  AND PU.USUARIO_ID = 16;
+
+SELECT
+    ID,
+    NOME,
+    ORGANIZACAO_ID
+FROM PROJETO
+ORDER BY ID;
   
-  select * from usuario;
+  
+  select * from projeto;
 -- ============================================================
 -- FIM DO SCRIPT
 -- ============================================================
