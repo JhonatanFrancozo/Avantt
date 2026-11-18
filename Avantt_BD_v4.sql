@@ -1127,6 +1127,49 @@ VALUES
 
 (15, 8, 'Responsável');
 
+CREATE TABLE projeto_marco (
+    id INT NOT NULL AUTO_INCREMENT,
+    projeto_id INT NOT NULL,
+    nome VARCHAR(150) NOT NULL,
+    data DATE NOT NULL,
+    concluido TINYINT(1) NOT NULL DEFAULT 0,
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    INDEX idx_projeto_marco_projeto (projeto_id),
+
+    CONSTRAINT fk_projeto_marco_projeto
+        FOREIGN KEY (projeto_id)
+        REFERENCES projeto(id)
+        ON DELETE CASCADE
+);
+
+DESCRIBE projeto_marco;
+
+DESCRIBE projeto_risco;
+
+SHOW CREATE TABLE projeto_marco;
+
+SHOW CREATE TABLE projeto_risco;
+
+
+CREATE TABLE projeto_risco (
+    id INT NOT NULL AUTO_INCREMENT,
+    projeto_id INT NOT NULL,
+    descricao VARCHAR(500) NOT NULL,
+    data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+
+    INDEX idx_projeto_risco_projeto (projeto_id),
+
+    CONSTRAINT fk_projeto_risco_projeto
+        FOREIGN KEY (projeto_id)
+        REFERENCES projeto(id)
+        ON DELETE CASCADE
+);
+
 
 -- ============================================================
 -- TAREFA_TAG
@@ -1257,8 +1300,160 @@ CREATE OR REPLACE VIEW vw_hours_estimated_by_project AS
      FROM tarefa                                                                                                                                                                         
      GROUP BY projeto_id;   
      
-select * from vw_hours_estimated_by_project;     
+select * from vw_hours_estimated_by_project;
+
+SHOW TABLES LIKE '%status%';  
+
+DESCRIBE status_tarefa;
+
+DESCRIBE projeto;
+
+DESCRIBE cliente;
+
+DESCRIBE tarefa;
+
+DESCRIBE usuario;
+DESCRIBE tarefa_usuario;
+select * from tarefa;
+
+SHOW TABLES LIKE '%tarefa%';
+
+SHOW TABLES LIKE '%status%';
+
+SELECT
+    id,
+    nome,
+    email,
+    organizacao_id,
+    perfil_id,
+    is_ativo
+FROM usuario;
+DESCRIBE status_tarefa;
+
+SELECT * FROM status_tarefa LIMIT 5;
+
+select * from projeto;
+
+SELECT COLUMN_NAME, DATA_TYPE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME = 'tarefa'
+ORDER BY ORDINAL_POSITION;
+
+SELECT
+    id,
+    titulo,
+    atribuido_para
+FROM tarefa
+ORDER BY id DESC;
+
+SELECT DATABASE();
+DESCRIBE usuario;
+SHOW COLUMNS FROM tarefa;
+
+ALTER TABLE tarefa
+ADD COLUMN atribuido_para INT NULL;
+
+CREATE INDEX idx_tarefa_atribuido_para
+ON tarefa (atribuido_para);
+
+DESCRIBE tarefa;
+
+SELECT
+    t.id,
+    t.titulo,
+    t.atribuido_para,
+    u.nome AS nome_responsavel
+FROM tarefa t
+LEFT JOIN usuario u
+    ON u.id = t.atribuido_para
+ORDER BY t.id DESC;
+
+SELECT
+    id,
+    titulo,
+    projeto_id,
+    sprint_id,
+    status_id
+FROM tarefa
+WHERE sprint_id IS NULL;
+
+SELECT
+    id,
+    nome
+FROM status_tarefa
+ORDER BY id;
+SELECT
+    id,
+    titulo,
+    projeto_id,
+    sprint_id,
+    status_id
+FROM tarefa
+ORDER BY id DESC
+LIMIT 20;
+SELECT
+    t.id,
+    t.titulo,
+    t.atribuido_para,
+    u.id AS usuario_id,
+    u.nome AS nome_responsavel
+FROM tarefa t
+LEFT JOIN usuario u
+    ON u.id = t.atribuido_para
+ORDER BY t.id DESC;
+
+SELECT *
+FROM projeto_marco
+ORDER BY id DESC;
+
+SELECT *
+FROM usuario
+ORDER BY id DESC
+LIMIT 30;
      
+     
+ SELECT
+    id,
+    nome,
+    email,
+    cpf,
+    telefone,
+    cargo,
+    papel,
+    is_ativo,
+    data_criacao
+FROM usuario
+ORDER BY id DESC;
+ 
+     SELECT *
+FROM organizacao
+ORDER BY id DESC;
+
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+  AND (
+    LOWER(TABLE_NAME) LIKE '%marco%'
+    OR LOWER(TABLE_NAME) LIKE '%milestone%'
+    OR LOWER(TABLE_NAME) LIKE '%risco%'
+    OR LOWER(TABLE_NAME) LIKE '%risk%'
+  );
+  
+  SHOW TABLES;
+  
+  DESCRIBE sprint;
+
+DESCRIBE projeto;
+
+SELECT
+    u.id AS usuario_id,
+    u.nome,
+    u.organizacao_id,
+    o.id AS organizacao_encontrada
+FROM usuario u
+LEFT JOIN organizacao o
+    ON o.id = u.organizacao_id
+WHERE u.id = 10;
                                                                                                                                                                              
 CREATE INDEX idx_tarefa_status ON tarefa(status_id);                                                                                                                         
 CREATE INDEX idx_tarefa_projeto ON tarefa(projeto_id);                                                                                                                       
@@ -1266,6 +1461,16 @@ CREATE INDEX idx_tarefa_sprint ON tarefa(sprint_id);
 CREATE INDEX idx_tarefa_datafim ON tarefa(data_fim);                                                                                                                         
 CREATE INDEX idx_tarefa_usuario_usuario ON tarefa_usuario(usuario_id);          
                      
+                     
+SELECT COUNT(*)
+FROM tarefa t
+INNER JOIN tarefa_usuario tu
+    ON tu.tarefa_id = t.id
+WHERE t.projeto_id = ?
+  AND tu.usuario_id = ?;
+  
+  
+  select * from usuario;
 -- ============================================================
 -- FIM DO SCRIPT
 -- ============================================================
