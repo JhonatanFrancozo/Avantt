@@ -1492,6 +1492,20 @@ WHERE ATRIBUIDO_PARA IS NOT NULL
 GROUP BY ATRIBUIDO_PARA
 ORDER BY ATRIBUIDO_PARA;
 
+ALTER TABLE usuario
+ADD COLUMN convite_token VARCHAR(64) NULL,
+ADD COLUMN convite_token_expiry DATETIME NULL,
+ADD COLUMN primeiro_acesso_validado BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX idx_usuario_convite_token
+ON usuario(convite_token);
+
+UPDATE usuario
+SET primeiro_acesso_validado = TRUE
+WHERE id > 0
+  AND senha IS NOT NULL
+  AND TRIM(senha) <> '';
+
 SELECT
     ID,
     NOME,
@@ -1523,7 +1537,12 @@ FROM PROJETO
 ORDER BY ID;
   
   
-  select * from projeto;
+  select * from usuario;
+  
+DELETE FROM usuario
+WHERE ID = 17;
+
+
 -- ============================================================
 -- FIM DO SCRIPT
 -- ============================================================
