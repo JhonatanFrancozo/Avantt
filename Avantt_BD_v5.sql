@@ -129,7 +129,9 @@ CREATE TABLE projeto (
     id INT AUTO_INCREMENT PRIMARY KEY,
 
     organizacao_id INT NOT NULL,
+    criado_por_id INT NULL,
     cliente_id INT NULL,
+    aviso_prazo_enviado_para DATE NULL,
 
     nome VARCHAR(150) NOT NULL,
     descricao TEXT,
@@ -147,7 +149,7 @@ CREATE TABLE projeto (
     data_fim DATE,
 
     horas_estimadas DECIMAL(10,2) DEFAULT 0.00,
-
+    horas_realizadas DECIMAL(10,2) DEFAULT 0.00,
     data_criacao DATETIME DEFAULT CURRENT_TIMESTAMP,
     data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
